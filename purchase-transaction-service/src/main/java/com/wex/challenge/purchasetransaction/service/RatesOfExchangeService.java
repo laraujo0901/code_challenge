@@ -10,12 +10,17 @@ import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.wex.challenge.purchasetransaction.exception.CurrencyConversionUnavailableException;
 import com.wex.challenge.purchasetransaction.model.RatesOfExchange;
 import com.wex.challenge.purchasetransaction.model.RatesOfExchangeDTO;
 import com.wex.challenge.purchasetransaction.repository.RatesOfExchangeRepository;
@@ -144,6 +149,11 @@ public class RatesOfExchangeService {
         return fetchPage(pageNumber, currencyFilter, null);
     }
 
+    @Retryable(
+        retryFor = { RestClientException.class, Exception.class },
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 1000, multiplier = 2.0)
+    )
     private RatesOfExchangeResponse fetchPage(
             int pageNumber,
             String currencyFilter,
@@ -163,6 +173,19 @@ public class RatesOfExchangeService {
 
         URI uri = builder.build().toUri();
         return restTemplate.getForObject(uri, RatesOfExchangeResponse.class);
+    }
+
+    @Recover
+    private RatesOfExchangeResponse recoverFetchPage(
+            Exception ex,
+            int pageNumber,
+            String currencyFilter,
+            LocalDate transactionDate) {
+        throw new CurrencyConversionUnavailableException(
+            "Unable to fetch exchange rates from Treasury API after 3 retry attempts. " +
+            "Currency conversion is not available at this moment. Please try again later.",
+            ex
+        );
     }
 
     private List<RatesOfExchange> toEntities(List<RatesOfExchangeRecord> records) {

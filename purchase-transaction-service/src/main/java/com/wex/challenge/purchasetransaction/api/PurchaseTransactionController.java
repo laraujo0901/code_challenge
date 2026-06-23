@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.wex.challenge.purchasetransaction.exception.InvalidTransactionDataException;
 import com.wex.challenge.purchasetransaction.model.PurchaseTransactionConvertedDTO;
 import com.wex.challenge.purchasetransaction.model.PurchaseTransactionDTO;
 import com.wex.challenge.purchasetransaction.service.PurchaseTransactionService;
@@ -56,8 +57,14 @@ public class PurchaseTransactionController {
         return ResponseEntity.ok(service.getConvertedTransaction(transactionId, currency));
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+    @ExceptionHandler({IllegalArgumentException.class, InvalidTransactionDataException.class})
+    public ResponseEntity<Map<String, Object>> handleInvalidRequest(RuntimeException ex) {
+        if (ex instanceof InvalidTransactionDataException ite) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "message", ite.getGeneralMessage(),
+                "details", ite.getDetails()
+            ));
+        }
         return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
     }
 }

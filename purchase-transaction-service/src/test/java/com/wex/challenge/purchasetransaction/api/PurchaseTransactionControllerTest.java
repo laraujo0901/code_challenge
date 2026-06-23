@@ -47,10 +47,7 @@ class PurchaseTransactionControllerTest {
                 {
                   "description": "Lunch",
                   "amount": 25.50,
-                  "transactionDate": "2026-06-17",
-                  "convertedAmount": 26.00,
-                  "currency": "Real",
-                  "exchangeRate": 1.02
+                  "transactionDate": "2026-06-17"
                 }
                 """;
 
@@ -71,10 +68,67 @@ class PurchaseTransactionControllerTest {
                 {
                   "description": "Lunch",
                   "amount": 25.50,
-                  "transactionDate": "17-06-2026",
-                  "convertedAmount": 26.00,
-                  "currency": "Real",
-                  "exchangeRate": 1.02
+                  "transactionDate": "17-06-2026"
+                }
+                """;
+
+                mockMvc.perform(post("/api/purchase-transactions")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody))
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.message")
+                                        .value("Some attributes are invalid, check details"))
+                                .andExpect(jsonPath("$.details[0]")
+                                        .value("transactionDate must be in MM/dd/yyyy or yyyy-MM-dd format"));
+    }
+
+    @Test
+    void shouldRejectTransactionWithTooLongDescription() throws Exception {
+        String requestBody = """
+                {
+                  "description": "This description is definitely longer than fifty characters and invalid",
+                  "amount": 25.50,
+                  "transactionDate": "2026-06-17"
+                }
+                """;
+
+                mockMvc.perform(post("/api/purchase-transactions")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody))
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.message")
+                                        .value("Some attributes are invalid, check details"))
+                                .andExpect(jsonPath("$.details[0]")
+                                        .value("description must be at most 50 characters"));
+    }
+
+    @Test
+    void shouldRejectTransactionWithNonPositiveAmount() throws Exception {
+        String requestBody = """
+                {
+                  "description": "Lunch",
+                  "amount": -10.00,
+                  "transactionDate": "2026-06-17"
+                }
+                """;
+
+                mockMvc.perform(post("/api/purchase-transactions")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody))
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.message")
+                                        .value("Some attributes are invalid, check details"))
+                                .andExpect(jsonPath("$.details[0]")
+                                        .value("amount must be a positive value"));
+    }
+
+    @Test
+    void shouldReturnMultipleValidationErrorsTogether() throws Exception {
+        String requestBody = """
+                {
+                  "description": "",
+                  "amount": -5.00,
+                  "transactionDate": "17-06-2026"
                 }
                 """;
 
@@ -82,8 +136,10 @@ class PurchaseTransactionControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
-                    .value("transactionDate must be in MM/dd/yyyy or yyyy-MM-dd format"));
+                .andExpect(jsonPath("$.message").value("Some attributes are invalid, check details"))
+                .andExpect(jsonPath("$.details[0]").value("description is required"))
+                .andExpect(jsonPath("$.details[1]").value("amount must be a positive value"))
+                .andExpect(jsonPath("$.details[2]").value("transactionDate must be in MM/dd/yyyy or yyyy-MM-dd format"));
     }
 
     @Test
@@ -97,19 +153,40 @@ class PurchaseTransactionControllerTest {
         RatesOfExchange rate = new RatesOfExchange();
         rate.setRecordDate(LocalDate.of(2026, 6, 17));
         rate.setCountry("United States");
-        rate.setCurrency("USD");
+        rate.setCurrency("Dollar");
         rate.setExchangeRate(BigDecimal.valueOf(1.5));
         rate.setEffectiveDate(LocalDate.of(2026, 6, 17));
         ratesOfExchangeRepository.save(rate);
 
         mockMvc.perform(get("/api/purchase-transactions/converted")
-                .param("currency", "USD")
+                .param("currency", "Dollar")
                 .param("page", "0")
                 .param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].description").value("Lunch"))
-                .andExpect(jsonPath("$.content[0].currency").value("USD"))
+                .andExpect(jsonPath("$.content[0].currency").value("Dollar"))
                 .andExpect(jsonPath("$.content[0].convertedAmount").value(38.25));
+    }
+
+    @Test
+    void shouldReturnConvertedTransactionsWithMissingRateMessage() throws Exception {
+        PurchaseTransaction transaction = new PurchaseTransaction();
+        transaction.setDescription("Some transaction");
+        transaction.setAmount(BigDecimal.valueOf(123.45));
+        transaction.setTransactionDate(LocalDate.of(2026, 6, 22));
+        repository.save(transaction);
+
+        mockMvc.perform(get("/api/purchase-transactions/converted")
+                .param("currency", "INVALID_CURRENCY")
+                .param("page", "0")
+                .param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").isNumber())
+                .andExpect(jsonPath("$.content[0].description").value("Some transaction"))
+                .andExpect(jsonPath("$.content[0].amount").value(123.45))
+                .andExpect(jsonPath("$.content[0].convertedAmount").value(0.0))
+                .andExpect(jsonPath("$.content[0].currency").value("INVALID_CURRENCY"))
+                .andExpect(jsonPath("$.content[0].message").exists());
     }
 
     @Test
@@ -123,7 +200,7 @@ class PurchaseTransactionControllerTest {
         RatesOfExchange earlierRate = new RatesOfExchange();
         earlierRate.setRecordDate(LocalDate.of(2026, 6, 10));
         earlierRate.setCountry("United States");
-        earlierRate.setCurrency("USD");
+        earlierRate.setCurrency("Dollar");
         earlierRate.setExchangeRate(BigDecimal.valueOf(1.10));
         earlierRate.setEffectiveDate(LocalDate.of(2026, 6, 10));
         ratesOfExchangeRepository.save(earlierRate);
@@ -131,13 +208,13 @@ class PurchaseTransactionControllerTest {
         RatesOfExchange laterRate = new RatesOfExchange();
         laterRate.setRecordDate(LocalDate.of(2026, 6, 20));
         laterRate.setCountry("United States");
-        laterRate.setCurrency("USD");
+        laterRate.setCurrency("Dollar");
         laterRate.setExchangeRate(BigDecimal.valueOf(1.50));
         laterRate.setEffectiveDate(LocalDate.of(2026, 6, 20));
         ratesOfExchangeRepository.save(laterRate);
 
         mockMvc.perform(get("/api/purchase-transactions/converted")
-                .param("currency", "USD")
+                .param("currency", "Dollar")
                 .param("page", "0")
                 .param("size", "1"))
                 .andExpect(status().isOk())

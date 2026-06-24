@@ -1,6 +1,5 @@
 package com.wex.challenge.purchasetransaction.api;
 
-import java.util.List;
 import java.util.Map;
 
 import org.springframework.data.domain.Pageable;
@@ -44,17 +43,17 @@ public class PurchaseTransactionController {
     
 
     @GetMapping("/converted")
-    public ResponseEntity<Slice<PurchaseTransactionConvertedDTO>> getConverted(
-            @RequestParam String currency,
+    public Slice<PurchaseTransactionConvertedDTO> getConverted(
+            @RequestParam(required = false) String currency,
             Pageable pageable) {
-        return ResponseEntity.ok(service.getConvertedTransactions(currency, pageable));
+        return service.getConvertedTransactions(currency, pageable);
     }
 
     @GetMapping("/converted/{transactionId}")
-    public ResponseEntity<PurchaseTransactionConvertedDTO> getConvertedTransaction(
+    public PurchaseTransactionConvertedDTO getConvertedTransaction(
         @PathVariable("transactionId") Long transactionId,
-        @RequestParam String currency) {
-        return ResponseEntity.ok(service.getConvertedTransaction(transactionId, currency));
+        @RequestParam(required = false) String currency) {
+        return service.getConvertedTransaction(transactionId, currency);
     }
 
     @ExceptionHandler({IllegalArgumentException.class, InvalidTransactionDataException.class})

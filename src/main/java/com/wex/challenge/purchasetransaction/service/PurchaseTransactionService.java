@@ -50,9 +50,7 @@ public class PurchaseTransactionService {
             savedTransaction.getId(),
             savedTransaction.getDescription(),
             savedTransaction.getAmount(),
-            savedTransaction.getTransactionDate() != null
-                ? savedTransaction.getTransactionDate().toString()
-                : null
+            savedTransaction.getTransactionDate().toString()
         );
     }
 
@@ -122,9 +120,9 @@ public class PurchaseTransactionService {
 
     private BigDecimal convertAmount(BigDecimal amount, BigDecimal exchangeRate) {
         if (amount == null || exchangeRate == null) {
-            return BigDecimal.ZERO;
+            return null;
         }
-        return amount.multiply(exchangeRate).setScale(2, RoundingMode.HALF_UP);
+        return amount.multiply(exchangeRate).setScale(2, RoundingMode.HALF_EVEN);
     }
 
     private LocalDate parseTransactionDate(String value) {
@@ -166,6 +164,7 @@ public class PurchaseTransactionService {
                 currency,
                 transaction.getTransactionDate()
             );
+            
         LocalDate endDate = LocalDate.now();
         LocalDate initialDate = endDate.minusMonths(monthsToLookBack);
         if (rateOpt.isEmpty()) {
@@ -181,9 +180,7 @@ public class PurchaseTransactionService {
             transaction.getId(),
             transaction.getDescription(),
             transaction.getAmount(),
-            transaction.getTransactionDate() != null
-                ? transaction.getTransactionDate().toString()
-                : null,
+            transaction.getTransactionDate().toString(),
             convertAmount(transaction.getAmount(), rate.getExchangeRate()),
             rate.getCurrency(),
             rate.getExchangeRate(),
@@ -198,10 +195,8 @@ public class PurchaseTransactionService {
             transaction.getId(),
             transaction.getDescription(),
             transaction.getAmount(),
-            transaction.getTransactionDate() != null
-                ? transaction.getTransactionDate().toString()
-                : null,
-            BigDecimal.ZERO,
+            transaction.getTransactionDate().toString(),
+            null,
             currency,
             null,
             "Exchange rate for currency " + currency + " not found between " + initialDate + " and " + endDate
@@ -215,9 +210,7 @@ public class PurchaseTransactionService {
                 transaction.getId(),
                 transaction.getDescription(),
                 transaction.getAmount(),
-                transaction.getTransactionDate() != null
-                    ? transaction.getTransactionDate().toString()
-                    : null
+                transaction.getTransactionDate().toString()
             ))
             .toList();
 

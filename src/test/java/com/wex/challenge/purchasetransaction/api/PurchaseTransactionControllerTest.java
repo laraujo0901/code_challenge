@@ -184,7 +184,6 @@ class PurchaseTransactionControllerTest {
                 .andExpect(jsonPath("$.content[0].id").isNumber())
                 .andExpect(jsonPath("$.content[0].description").value("Some transaction"))
                 .andExpect(jsonPath("$.content[0].amount").value(123.45))
-                .andExpect(jsonPath("$.content[0].convertedAmount").value(0.0))
                 .andExpect(jsonPath("$.content[0].currency").value("INVALID_CURRENCY"))
                 .andExpect(jsonPath("$.content[0].message").exists());
     }

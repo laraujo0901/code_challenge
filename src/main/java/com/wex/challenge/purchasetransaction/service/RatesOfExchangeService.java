@@ -9,7 +9,10 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Pageable;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
@@ -71,17 +74,6 @@ public class RatesOfExchangeService {
     }
 
     @Transactional(readOnly = true)
-    public Optional<RatesOfExchange> findRateForCurrency(String currency) {
-        if (currency == null || currency.isBlank()) {
-            return Optional.empty();
-        }
-
-        return repository.findByCurrencyIgnoreCase(currency).stream()
-            .max(Comparator.comparing(RatesOfExchange::getEffectiveDate)
-                .thenComparing(RatesOfExchange::getRecordDate));
-    }
-
-    @Transactional(readOnly = true)
     public Optional<RatesOfExchange> findRateForCurrencyAndDate(
             String currency,
             LocalDate transactionDate) {
@@ -93,18 +85,6 @@ public class RatesOfExchangeService {
             currency,
             transactionDate
         );
-    }
-
-    @Transactional
-    public Optional<RatesOfExchange> findRateForCurrencyOrFetch(String currency) {
-        Optional<RatesOfExchange> cached = findRateForCurrency(currency);
-        if (cached.isPresent()) {
-            return cached;
-        }
-
-        Optional<RatesOfExchange> fetched = fetchRateForCurrency(currency);
-        fetched.ifPresent(repository::save);
-        return fetched;
     }
 
     @Transactional
@@ -121,15 +101,6 @@ public class RatesOfExchangeService {
         return fetched;
     }
 
-    private Optional<RatesOfExchange> fetchRateForCurrency(String currency) {
-        RatesOfExchangeResponse response = fetchPage(1, currency);
-        if (response == null || response.data() == null || response.data().isEmpty()) {
-            return Optional.empty();
-        }
-
-        return toEntities(response.data()).stream().findFirst();
-    }
-
     private Optional<RatesOfExchange> fetchRateForCurrencyAndDate(
             String currency,
             LocalDate transactionDate) {
@@ -138,6 +109,8 @@ public class RatesOfExchangeService {
             return Optional.empty();
         }
 
+        // Filter the fetched rates to find the one with the latest effective date that is less than or equal to the transaction date
+        // Record date is used as a secondary sort key in case of multiple rates with the same effective date
         return toEntities(response.data()).stream()
             .filter(rate -> rate.getEffectiveDate() != null
                 && !rate.getEffectiveDate().isAfter(transactionDate))
@@ -222,8 +195,8 @@ public class RatesOfExchangeService {
     ) {
     }
 
-    public List<RatesOfExchangeDTO> getAllRatesOfExchange() {
-        List<RatesOfExchange> rates = repository.findAll();
+    public Slice<RatesOfExchangeDTO> getAllRatesOfExchange(Pageable pageable) {
+        Slice<RatesOfExchange> rates = repository.findAllBy(pageable);
         List<RatesOfExchangeDTO> dtos = new ArrayList<>();
         for (RatesOfExchange rate : rates) {
             RatesOfExchangeDTO dto = new RatesOfExchangeDTO(
@@ -234,6 +207,6 @@ public class RatesOfExchangeService {
             );
             dtos.add(dto);
         }
-        return dtos;
+        return new SliceImpl<RatesOfExchangeDTO>(dtos, pageable, rates.hasNext());
     }
 }

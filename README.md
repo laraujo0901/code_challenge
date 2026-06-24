@@ -1,5 +1,13 @@
-# code_challenge
-A coding challenge to develop a purchase transaction store service.
+# Purchase Transaction Service
+A coding challenge to develop a purchase transaction store service with currency convertion.
+
+## Table of Contents
+
+1. [Requirements](#requirements)
+2. [Technical Details](#technical-details)
+3. [API Details](#api-details)
+4. [Using APIs](#using-apis)
+
 
 ## Requirements
 
@@ -9,7 +17,7 @@ This service provides APIs endpoints over HTTP protocol, inspired on REST concep
 
 A transaction must have the following attributes:
 - A description, with a maximum of 50 characters;
-- A transaction date, in format "yyyy-MM-dd" or "MM/dd/yyyy";
+- A transaction date, in *yyyy-MM-dd* or *MM/dd/yyyy* formats;
 - A purchase amount, a positive amount rounded to the nearest cent;
 
 When stored, the transaction receives an unique integer identifier.
@@ -18,9 +26,9 @@ When stored, the transaction receives an unique integer identifier.
 
 The service provides an API to retrieve purchase transactions with amount converted to a given currency.
 
-To convert the transaction amount, API will query the Treasury Reporting Rates of Exchange API, based on the transaction date.
+To convert the transaction amount, API will query the [Treasury Reporting Rates of Exchange API](https://fiscaldata.treasury.gov/datasets/treasury-reporting-rates-exchange/treasury-reporting-rates-of-exchange), based on the transaction date.
 
-Requirement to convert transaction amount:
+Requirements to convert transaction amount:
 - Currency convertion rate must have effective date equal or less than transaction date, within the last 6 months;
 - If no convertion rate is available within 6 months, equal or before the transaction date, an error will be returned to inform that conversion cannot be done.
 
@@ -31,12 +39,15 @@ The service is built with Java 21 and Spring Boot framework.
 
 Persistence layer is in-memory H2 database, for simplicity.
 
-Spring Boot Retry is used to manage Treasury API call errors.
+Spring Boot Retry is used to handle Treasury API call errors and retries.
+
+Spring Boot Actuator is enabled to health check and application metrics.
 
 Default values could be overrided in application.properties config file.
 
 JUnit, Mockito and Spring MockMVC are used in tests.
 
+To start this service, use `./mvnw spring-boot:run` in project folder (Maven required).
 
 ## API details
 
@@ -204,7 +215,49 @@ Response example:
 }
 ```
 
-If the conversion rate cannot be found within the allowed lookback window, the returned item may still include the original transaction information and a `message` field indicating the missing conversion rate.
+Notes:
+
+1. Successful queries for rates of exchange in Treasury API are stored in database, so subsequent requests using an already provided currency will hit the database cache.
+
+2. If the conversion rate cannot be found within the allowed lookback window, the returned item may still include the original transaction information and a `message` field indicating the missing conversion rate.
+
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "description": "Office supplies",
+      "amount": 123.45,
+      "transactionDate": "2024-04-30",
+      "currency": "Euro",
+      "message": "Exchange rate for currency Euro not found between 2025-12-23 and 2026-06-23"
+    }
+  ],
+  "pageable": {
+    "sort": {
+      "sorted": false,
+      "unsorted": true,
+      "empty": true
+    },
+    "pageNumber": 0,
+    "pageSize": 20,
+    "offset": 0,
+    "paged": true,
+    "unpaged": false
+  },
+  "last": true,
+  "first": true,
+  "numberOfElements": 1,
+  "size": 20,
+  "number": 0,
+  "sort": {
+    "sorted": false,
+    "unsorted": true,
+    "empty": true
+  },
+  "empty": false
+}
+```
 
 ### 4) Get a single converted transaction
 
@@ -230,32 +283,78 @@ Success response:
   "amount": 123.45,
   "transactionDate": "2024-04-30",
   "convertedAmount": 98.76,
-  "currency": "EUR",
+  "currency": "Euro",
   "exchangeRate": 0.8
 }
 ```
+
+Note:
+
 If the conversion rate cannot be found within the allowed lookback window, the returned item may still include the original transaction information and a `message` field indicating the missing conversion rate.
+
+```json
+{
+  "message": "Exchange rate for currency Cayman Islands Dollar not found between 2025-12-23 and 2026-06-23 for transaction 1"
+}
+```
 
 ### 5) List exchange rates
 
 `GET /api/rates-of-exchange`
 
+Query parameters:
+
+- `page` (optional)
+- `size` (optional)
+- `sort` (optional)
+
 Success response:
 
 - Status: `200 OK`
-- Body: array of rate objects
+- Body: a pageable `Slice` object with exchange rate DTOs
 
 Response example:
 
 ```json
-[
-  {
-    "country": "Eurozone",
-    "currency": "Euro",
-    "exchangeRate": 0.8,
-    "effectiveDate": "2024-04-01"
-  }
-]
+{
+  "content": [
+    {
+      "country": "Eurozone",
+      "currency": "Euro",
+      "exchangeRate": 0.8,
+      "effectiveDate": "2024-04-01"
+    }
+  ],
+  "pageable": {
+    "sort": {
+      "sorted": false,
+      "unsorted": true,
+      "empty": true
+    },
+    "pageNumber": 0,
+    "pageSize": 20,
+    "offset": 0,
+    "paged": true,
+    "unpaged": false
+  },
+  "last": true,
+  "first": true,
+  "numberOfElements": 1,
+  "size": 20,
+  "number": 0,
+  "sort": {
+    "sorted": false,
+    "unsorted": true,
+    "empty": true
+  },
+  "empty": false
+}
+```
+
+Example request with pagination:
+
+```http
+GET /api/rates-of-exchange?page=0&size=10&sort=effectiveDate,desc
 ```
 
 ### Error responses
@@ -285,3 +384,19 @@ Other bad request example:
 When conversion cannot be performed because no exchange rate is available within the allowed window, the API returns a `400 Bad Request` with a descriptive message.
 
 
+## Using APIs
+
+1) Store some purchase transactions
+- `POST /api/purchase-transactions`
+
+2) Check the transactions stored in database
+- `GET /api/purchase-transactions`
+
+3) Retrieve a transaction converting its amount to a given currency
+- `GET /api/purchase-transactions/converted/{transactionId}?currency={currency}`
+
+4) Want to see all transactions converted to a given currency? Go ahead!
+- `GET /api/purchase-transactions/converted?currency={currency}`
+
+5) List rates of exchange stored in database after some queries (cache)
+- `GET /api/rates-of-exchange`
